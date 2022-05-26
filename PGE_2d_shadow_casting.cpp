@@ -12,6 +12,13 @@ struct line
   int y2;
 };
 
+enum STATE
+{
+  SELECT_AN_INTERSECTION,
+  INTERSECTION_HAS_BEEN_SELECTED,
+  CAST_LIGHT
+};
+
 class PGE_2d_shadow_casting : public olc::PixelGameEngine
 {
 public:
@@ -24,9 +31,10 @@ private:
   int circleRadius = 10;
   int gridSize = 20;
   int controlAreaHeight = 100;
-  bool close = false;
   std::vector<line> lines;
   std::pair<int, int> selectedIntersection = {-1, -1};
+  int UIscaling = 2;
+  STATE state = SELECT_AN_INTERSECTION;
 
 public:
   bool OnUserCreate() override
@@ -40,16 +48,12 @@ public:
   {
     if (IsFocused())
     {
-      // TODO: creation and deletion of lines in grid positions
+      // TODO: integrate font extension of the PGE
+      // TODO: create some color-constants so that color changes can be applied more easily
+      // TODO: fix performance issues for -O0
       // TODO: modes for creating lines and casting light/shadows
+      // TODO: store lines using a hash function for efficient lookup times
       UserInput();
-
-      // Closes the program
-      if (close)
-      {
-        return false;
-      }
-
       UpdateState();
       DrawToScreen();
     }
@@ -62,24 +66,76 @@ public:
    */
   void UserInput()
   {
-    // Program can be terminated by pressing escape
-    if (GetKey(olc::Key::ESCAPE).bPressed)
-    {
-      close = true;
-    }
-
-    // TODO: check if the intersection isn't occupied by any other line
-    // Selects an intersection provided the mouse is in a valid place
+    // TODO: refactor with program states in mind
+    // Selects an intersection if the mouse is in a valid place
     if (GetMouseY() > controlAreaHeight && GetMouse(0).bPressed)
     {
-      selectedIntersection.first = FindClosestMultipleOf20(GetMouseX());
-      selectedIntersection.second = FindClosestMultipleOf20(GetMouseY());
+      // Highlighting a selected intersection
+      if (state == SELECT_AN_INTERSECTION)
+      {
+        selectedIntersection.first = FindClosestMult(GetMouseX());
+        selectedIntersection.second = FindClosestMult(GetMouseY());
+        state = INTERSECTION_HAS_BEEN_SELECTED;
+      }
+      // Two intersections have been selected => create a line
+      else if (state == INTERSECTION_HAS_BEEN_SELECTED)
+      {
+        const int selectedX = FindClosestMult(GetMouseX());
+        const int selectedY = FindClosestMult(GetMouseY());
+
+        // If the resulting line already exists, do nothing
+        for(const auto& line : lines)
+        {
+          if (
+            selectedIntersection.first == line.x1 && selectedIntersection.second == line.y1 && selectedX == line.x2 && selectedY == line.y2 ||
+            selectedIntersection.first == line.x2 && selectedIntersection.second == line.y2 && selectedX == line.x1 && selectedY == line.y1
+          )
+          {
+            return;
+          }
+        }
+
+        lines.push_back({selectedIntersection.first, selectedIntersection.second, selectedX, selectedY});
+
+        // After creating a new line, deselect everything
+        selectedIntersection = {-1, -1};
+        state = SELECT_AN_INTERSECTION;
+      }
     }
 
-    // Right click clears the selected intersection
+    // Right click clears or deletes
     if (GetMouse(1).bPressed)
     {
-      selectedIntersection = {-1, -1};
+      // Clear the selection if it is present
+      if (state == INTERSECTION_HAS_BEEN_SELECTED)
+      {
+        selectedIntersection = {-1, -1};
+        state = SELECT_AN_INTERSECTION;
+      }
+      // Delete any lines if either end falls onto the highlighted intersection
+      else
+      {
+        if (!lines.empty())
+        {
+          const int selectedX = FindClosestMult(GetMouseX());
+          const int selectedY = FindClosestMult(GetMouseY());
+
+          for(std::vector<line>::iterator iterator = lines.begin(); iterator != lines.end(); iterator++)
+          {
+            if (selectedX == iterator->x1 && selectedY == iterator->y1 || selectedX == iterator->x2 && selectedY == iterator->y2)
+            {
+              lines.erase(iterator);
+              iterator--;
+            }
+          }
+        }
+      }
+    }
+
+    // Pressing backspace clears all lines off the screen
+    if (GetKey(olc::BACK).bPressed)
+    {
+      lines.clear();
     }
   }
 
@@ -98,16 +154,37 @@ public:
   {
     Clear(olc::BLACK);
 
-    // Draws the grid
-    DrawGrid();
+    // Draws the grid only when in drawing mode
+    if (state != CAST_LIGHT)
+    {
+      DrawGrid();
+    }
+
+    // Draws all created lines
+    DrawLines();
 
     // Drawing a cricle around the intersection closest to the mouse position
     HighlightNearestIntersection();
 
-    // Draws the selected intersection
-    if (selectedIntersection.first != -1 && selectedIntersection.second != -1)
+    // If an intersection has been selected
+    if (state == INTERSECTION_HAS_BEEN_SELECTED)
     {
-      FillCircle(selectedIntersection.first * gridSize, selectedIntersection.second * gridSize, circleRadius * 0.66f, olc::MAGENTA);
+      // Draws a line from the selected intersection to the highlighted one nearest to the mouse
+      DrawLine(
+        gridSize * FindClosestMult(GetMouseX()),
+        gridSize * FindClosestMult(GetMouseY()),
+        selectedIntersection.first * gridSize,
+        selectedIntersection.second * gridSize,
+        olc::CYAN
+      );
+
+      // Highlights the selected intersection
+      FillCircle(
+        selectedIntersection.first * gridSize,
+        selectedIntersection.second * gridSize,
+        circleRadius * 0.66f,
+        olc::MAGENTA
+      );
     }
 
     // Draws the control area with text
@@ -120,16 +197,27 @@ public:
   void DrawGrid()
   {
     // Grid field is 1280x720px with 100px at the top to display text
-    // Drawing vertical lines every 10 pixels
+    // Drawing vertical lines
     for (int x = gridSize; x < ScreenWidth(); x += gridSize)
     {
       DrawLine(x, controlAreaHeight, x, ScreenHeight(), olc::Pixel(55, 55, 55));
     }
 
-    // Drawing horizontal lines every 10 pixels
+    // Drawing horizontal lines
     for (int y = gridSize + controlAreaHeight; y < ScreenWidth(); y += gridSize)
     {
       DrawLine(0, y, ScreenWidth(), y, olc::Pixel(55, 55, 55));
+    }
+  }
+
+  /**
+   * @brief Draws all the lines stored in lines
+   */
+  void DrawLines()
+  {
+    for(const auto& line : lines)
+    {
+      DrawLine(line.x1 * gridSize, line.y1 * gridSize, line.x2 * gridSize, line.y2 * gridSize);
     }
   }
 
@@ -141,9 +229,9 @@ public:
   {
     if (GetMouseY() > controlAreaHeight)
     {
-      // Finding the closest multiples of 20
-      int x = FindClosestMultipleOf20(GetMouseX());
-      int y = FindClosestMultipleOf20(GetMouseY());
+      // Finding the closest multiples
+      int x = FindClosestMult(GetMouseX());
+      int y = FindClosestMult(GetMouseY());
 
       DrawCircle(x * gridSize, y * gridSize, circleRadius, olc::Pixel(255, 155, 0));
     }
@@ -155,27 +243,39 @@ public:
   void DrawControlArea()
   {
     // Drawing the control area at the top of the screen
-    FillRect(0, 0, ScreenWidth(), controlAreaHeight, olc::Pixel(115, 0, 125));
+    FillRect(0, 0, ScreenWidth(), controlAreaHeight, olc::Pixel(128, 0, 255));
 
     // Draws some text into the control area
-    // UI scaling: 2
-    DrawString(5, 5, "This is a showcase of 2d shadow casting.", olc::Pixel(0, 255, 255), 2);
+    DrawString(5, 5, "Mode (draw lines): [D] C", olc::Pixel(255, 128, 0), UIscaling);
+
+    // Instructions based on state
+    if (state == SELECT_AN_INTERSECTION)
+    {
+      DrawString(5, 30, "M1 - select a point", olc::WHITE, UIscaling);
+      DrawString(5, 55, "M2 - delete all lines that end at the mouse cursor", olc::WHITE, UIscaling);
+      DrawString(5, 80, "BACKSPACE - clear all lines", olc::WHITE, UIscaling);
+    }
+    else if (state == INTERSECTION_HAS_BEEN_SELECTED)
+    {
+      DrawString(5, 30, "M1 - place a line", olc::WHITE, UIscaling);
+      DrawString(5, 55, "M2 - cancel", olc::WHITE, UIscaling);
+    }
   }
 
   /**
-   * @brief Finds the closest multiple of 20 to the input number
+   * @brief Finds the closest multiple to the input number
    *
    * @param number The position of the mouse
    * @return int The grid coordinate of the number
    */
-  int FindClosestMultipleOf20(const int& number)
+  int FindClosestMult(const int& number)
   {
     int multiplier = number / gridSize;
 
-    // The closest multiple of 20 smaller than number
+    // The closest multiple smaller than number
     int closestSmaller = multiplier * gridSize;
 
-    // The closest multiple of 20 larger than number
+    // The closest multiple larger than number
     int closestLarger = (multiplier + 1) * gridSize;
 
     // Returning the one which has a smaller absolute distance to the number
