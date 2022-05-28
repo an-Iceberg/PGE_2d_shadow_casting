@@ -12,6 +12,14 @@ struct line
   int y2;
 };
 
+enum DIRECTION
+{
+  TOP_RIGHT,
+  TOP_LEFT,
+  BOTTOM_RIGHT,
+  BOTTOM_LEFT
+};
+
 enum STATE
 {
   SELECT_AN_INTERSECTION,
@@ -35,6 +43,9 @@ private:
   std::pair<int, int> selectedIntersection = {-1, -1};
   int UIscaling = 2;
   STATE state = SELECT_AN_INTERSECTION;
+
+  // Pythagoras' theorem (which wasn't actually invented by Pythagoras himself)
+  int diagonalDistance = sqrt(pow((820 - controlAreaHeight), 2) + pow(1280, 2));
 
 public:
   bool OnUserCreate() override
@@ -66,76 +77,96 @@ public:
    */
   void UserInput()
   {
-    // TODO: refactor with program states in mind
-    // Selects an intersection if the mouse is in a valid place
-    if (GetMouseY() > controlAreaHeight && GetMouse(0).bPressed)
+    // TODO: refactor this mess
+    // Drawing mode
+    if (state != CAST_LIGHT)
     {
-      // Highlighting a selected intersection
-      if (state == SELECT_AN_INTERSECTION)
+      if (GetKey(olc::RIGHT).bPressed)
       {
-        selectedIntersection.first = FindClosestMult(GetMouseX());
-        selectedIntersection.second = FindClosestMult(GetMouseY());
-        state = INTERSECTION_HAS_BEEN_SELECTED;
+        state = CAST_LIGHT;
+        return;
       }
-      // Two intersections have been selected => create a line
-      else if (state == INTERSECTION_HAS_BEEN_SELECTED)
-      {
-        const int selectedX = FindClosestMult(GetMouseX());
-        const int selectedY = FindClosestMult(GetMouseY());
 
-        // If the resulting line already exists, do nothing
-        for(const auto& line : lines)
+      // TODO: refactor with program states in mind
+      // Selects an intersection if the mouse is in a valid place
+      if (GetMouseY() > controlAreaHeight && GetMouse(0).bPressed)
+      {
+        // Highlighting a selected intersection
+        if (state == SELECT_AN_INTERSECTION)
         {
-          if (
-            selectedIntersection.first == line.x1 && selectedIntersection.second == line.y1 && selectedX == line.x2 && selectedY == line.y2 ||
-            selectedIntersection.first == line.x2 && selectedIntersection.second == line.y2 && selectedX == line.x1 && selectedY == line.y1
-          )
-          {
-            return;
-          }
+          selectedIntersection.first = FindClosestMult(GetMouseX());
+          selectedIntersection.second = FindClosestMult(GetMouseY());
+          state = INTERSECTION_HAS_BEEN_SELECTED;
         }
-
-        lines.push_back({selectedIntersection.first, selectedIntersection.second, selectedX, selectedY});
-
-        // After creating a new line, deselect everything
-        selectedIntersection = {-1, -1};
-        state = SELECT_AN_INTERSECTION;
-      }
-    }
-
-    // Right click clears or deletes
-    if (GetMouse(1).bPressed)
-    {
-      // Clear the selection if it is present
-      if (state == INTERSECTION_HAS_BEEN_SELECTED)
-      {
-        selectedIntersection = {-1, -1};
-        state = SELECT_AN_INTERSECTION;
-      }
-      // Delete any lines if either end falls onto the highlighted intersection
-      else
-      {
-        if (!lines.empty())
+        // Two intersections have been selected => create a line
+        else if (state == INTERSECTION_HAS_BEEN_SELECTED)
         {
           const int selectedX = FindClosestMult(GetMouseX());
           const int selectedY = FindClosestMult(GetMouseY());
 
-          for(std::vector<line>::iterator iterator = lines.begin(); iterator != lines.end(); iterator++)
+          // If the resulting line already exists, do nothing
+          for(const auto& line : lines)
           {
-            if (selectedX == iterator->x1 && selectedY == iterator->y1 || selectedX == iterator->x2 && selectedY == iterator->y2)
+            if (
+              selectedIntersection.first == line.x1 && selectedIntersection.second == line.y1 && selectedX == line.x2 && selectedY == line.y2 ||
+              selectedIntersection.first == line.x2 && selectedIntersection.second == line.y2 && selectedX == line.x1 && selectedY == line.y1
+            )
             {
-              lines.erase(iterator);
-              iterator--;
+              return;
+            }
+          }
+
+          lines.push_back({selectedIntersection.first, selectedIntersection.second, selectedX, selectedY});
+
+          // After creating a new line, deselect everything
+          selectedIntersection = {-1, -1};
+          state = SELECT_AN_INTERSECTION;
+        }
+      }
+
+      // Right click cancelles a selection or deletes line(s)
+      if (GetMouse(1).bPressed)
+      {
+        // Clear the selection if it is present
+        if (state == INTERSECTION_HAS_BEEN_SELECTED)
+        {
+          selectedIntersection = {-1, -1};
+          state = SELECT_AN_INTERSECTION;
+        }
+        // Delete any lines if either end falls onto the highlighted intersection
+        else
+        {
+          if (!lines.empty())
+          {
+            const int selectedX = FindClosestMult(GetMouseX());
+            const int selectedY = FindClosestMult(GetMouseY());
+
+            for(std::vector<line>::iterator iterator = lines.begin(); iterator != lines.end(); iterator++)
+            {
+              if (selectedX == iterator->x1 && selectedY == iterator->y1 || selectedX == iterator->x2 && selectedY == iterator->y2)
+              {
+                lines.erase(iterator);
+                iterator--;
+              }
             }
           }
         }
       }
-    }
 
-    // Pressing backspace clears all lines off the screen
-    if (GetKey(olc::BACK).bPressed)
+      // Pressing backspace clears all lines off the screen
+      if (GetKey(olc::BACK).bPressed)
+      {
+        lines.clear();
+      }
+    }
+    // Light casting mode
+    else
     {
-      lines.clear();
+      if (GetKey(olc::LEFT).bPressed)
+      {
+        state = SELECT_AN_INTERSECTION;
+        return;
+      }
     }
   }
 
@@ -163,8 +194,15 @@ public:
     // Draws all created lines
     DrawLines();
 
-    // Drawing a cricle around the intersection closest to the mouse position
-    HighlightNearestIntersection();
+    // Drawing a cricle around the intersection closest to the mouse position when in drawing mode
+    if (state != CAST_LIGHT)
+    {
+      HighlightNearestIntersection();
+    }
+    else
+    {
+      CastLight();
+    }
 
     // If an intersection has been selected
     if (state == INTERSECTION_HAS_BEEN_SELECTED)
@@ -215,9 +253,19 @@ public:
    */
   void DrawLines()
   {
-    for(const auto& line : lines)
+    if (state != CAST_LIGHT)
     {
-      DrawLine(line.x1 * gridSize, line.y1 * gridSize, line.x2 * gridSize, line.y2 * gridSize);
+      for(const auto& line : lines)
+      {
+        DrawLine(line.x1 * gridSize, line.y1 * gridSize, line.x2 * gridSize, line.y2 * gridSize);
+      }
+    }
+    else
+    {
+      for(const auto& line : lines)
+      {
+        DrawLine(line.x1 * gridSize, line.y1 * gridSize, line.x2 * gridSize, line.y2 * gridSize, olc::MAGENTA);
+      }
     }
   }
 
@@ -245,20 +293,31 @@ public:
     // Drawing the control area at the top of the screen
     FillRect(0, 0, ScreenWidth(), controlAreaHeight, olc::Pixel(128, 0, 255));
 
-    // Draws some text into the control area
-    DrawString(5, 5, "Mode (draw lines): [D] C", olc::Pixel(255, 128, 0), UIscaling);
-
     // Instructions based on state
     if (state == SELECT_AN_INTERSECTION)
     {
+      FillRect(0, 0, 419, 25, olc::DARK_MAGENTA);
+      DrawString(5, 5, "Mode: [D]  C  (draw lines)", olc::CYAN, UIscaling);
+      DrawString(420, 5, "(change with RIGHT/LEFT)", olc::WHITE, UIscaling);
+
       DrawString(5, 30, "M1 - select a point", olc::WHITE, UIscaling);
       DrawString(5, 55, "M2 - delete all lines that end at the mouse cursor", olc::WHITE, UIscaling);
       DrawString(5, 80, "BACKSPACE - clear all lines", olc::WHITE, UIscaling);
     }
     else if (state == INTERSECTION_HAS_BEEN_SELECTED)
     {
+      FillRect(0, 0, 419, 25, olc::DARK_MAGENTA);
+      DrawString(5, 5, "Mode: [D]  C  (draw lines)", olc::CYAN, UIscaling);
+      DrawString(420, 5, "(change with RIGHT/LEFT)", olc::WHITE, UIscaling);
+
       DrawString(5, 30, "M1 - place a line", olc::WHITE, UIscaling);
       DrawString(5, 55, "M2 - cancel", olc::WHITE, UIscaling);
+    }
+    else if (state == CAST_LIGHT)
+    {
+      FillRect(0, 0, 419, 25, olc::DARK_MAGENTA);
+      DrawString(5, 5, "Mode:  D  [C] (cast light)", olc::CYAN, UIscaling);
+      DrawString(420, 5, "(change with RIGHT/LEFT)", olc::WHITE, UIscaling);
     }
   }
 
@@ -280,6 +339,65 @@ public:
 
     // Returning the one which has a smaller absolute distance to the number
     return (abs(number - closestSmaller) < abs(number - closestLarger)) ? multiplier : multiplier + 1;
+  }
+
+  /**
+   * @brief Draws the light
+   */
+  void CastLight()
+  {
+    // IDEA: first cast light all over the world, then fill in the shadows behind the structures
+    // Fill the area with light
+    // ! Don't delete me FillRect(0, controlAreaHeight, ScreenWidth(), ScreenHeight());
+
+    // Then calculate all the shadows
+    for (std::vector<line>::iterator iterator = lines.begin(); iterator != lines.end(); iterator++)
+    {
+      olc::vi2d mousePosition = {GetMouseX(), GetMouseY()};
+
+      olc::vi2d point1 = {iterator->x1 * gridSize, iterator->y1 * gridSize};
+      olc::vi2d point2 = {iterator->x2 * gridSize, iterator->y2 * gridSize};
+
+      // HACK: Draw the lines to be just slightly bigger than the screen diagonal, that way the lines can be extended further and no additional math needs to be done
+      // Determine the two points of intersection on the edges of the field
+      olc::vi2d firstEdgePoint = FindSuitablePoint(mousePosition, point1);
+      olc::vi2d secondEdgePoint = FindSuitablePoint(mousePosition, point2);
+
+      std::cout << '\n';
+
+      DrawLine(mousePosition, point1, olc::CYAN);
+      DrawLine(mousePosition, point2, olc::CYAN);
+
+      // Divide the resulting polygon into triangles and 🎵 paint it black 🎶
+    }
+  }
+
+  /**
+   * @brief Finds a suitable point to use for completion of the polygon that represents the shadows
+   *
+   * @param mouseX X pixel position of mouse
+   * @param mouseY Y pixel position of mouse
+   * @param x X pixel position of a point
+   * @param y Y pixel psition of a point
+   * @return olc::vi2d The point to be used for the polygon
+   */
+  olc::vi2d FindSuitablePoint(const olc::vi2d& mouse, const olc::vi2d& point)
+  {
+    // Calculating the directional vector using AB = B - A
+    olc::vi2d direction = point - mouse;
+
+    // FIXME: the maths is very off for the lines
+    // Determine the coordinates of the distant point (using u = L / ||v|| * v)
+    olc::vi2d solution = (direction * (diagonalDistance / direction.mag())) - mouse;
+
+    std::cout << solution.mag() << ' ';
+
+    return solution;
+  }
+
+  void TrianguliseAndPaintItBlack()
+  {
+
   }
 };
 
