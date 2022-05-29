@@ -36,16 +36,19 @@ public:
   }
 
 private:
-  int circleRadius = 10;
-  int gridSize = 20;
-  int controlAreaHeight = 100;
+  const int circleRadius = 10;
+  const int gridSize = 20;
+  const int controlAreaHeight = 100;
+  const int UIscaling = 2;
+
   std::vector<line> lines;
-  std::pair<int, int> selectedIntersection = {-1, -1};
-  int UIscaling = 2;
+  olc::vi2d selectedIntersection = {-1, -1};
+  olc::vi2d mouse;
+
   STATE state = SELECT_AN_INTERSECTION;
 
   // Pythagoras' theorem (which wasn't actually invented by Pythagoras himself)
-  int diagonalDistance = sqrt(pow((820 - controlAreaHeight), 2) + pow(1280, 2));
+  const int diagonalDistance = sqrt(pow((820 - controlAreaHeight), 2) + pow(1280, 2));
 
 public:
   bool OnUserCreate() override
@@ -59,6 +62,8 @@ public:
   {
     if (IsFocused())
     {
+      mouse = {GetMouseX(), GetMouseY()};
+
       // TODO: integrate font extension of the PGE
       // TODO: create some color-constants so that color changes can be applied more easily
       // TODO: fix performance issues for -O0
@@ -89,34 +94,32 @@ public:
 
       // TODO: refactor with program states in mind
       // Selects an intersection if the mouse is in a valid place
-      if (GetMouseY() > controlAreaHeight && GetMouse(0).bPressed)
+      if (mouse.y > controlAreaHeight && GetMouse(0).bPressed)
       {
         // Highlighting a selected intersection
         if (state == SELECT_AN_INTERSECTION)
         {
-          selectedIntersection.first = FindClosestMult(GetMouseX());
-          selectedIntersection.second = FindClosestMult(GetMouseY());
+          selectedIntersection = {FindClosestMult(mouse.x), FindClosestMult(mouse.y)};
           state = INTERSECTION_HAS_BEEN_SELECTED;
         }
         // Two intersections have been selected => create a line
         else if (state == INTERSECTION_HAS_BEEN_SELECTED)
         {
-          const int selectedX = FindClosestMult(GetMouseX());
-          const int selectedY = FindClosestMult(GetMouseY());
+          const olc::vi2d selected = {FindClosestMult(mouse.x), FindClosestMult(mouse.y)};
 
           // If the resulting line already exists, do nothing
           for(const auto& line : lines)
           {
             if (
-              selectedIntersection.first == line.x1 && selectedIntersection.second == line.y1 && selectedX == line.x2 && selectedY == line.y2 ||
-              selectedIntersection.first == line.x2 && selectedIntersection.second == line.y2 && selectedX == line.x1 && selectedY == line.y1
+              selectedIntersection.x == line.x1 && selectedIntersection.y == line.y1 && selected.x == line.x2 && selected.y == line.y2 ||
+              selectedIntersection.x == line.x2 && selectedIntersection.y == line.y2 && selected.x == line.x1 && selected.y == line.y1
             )
             {
               return;
             }
           }
 
-          lines.push_back({selectedIntersection.first, selectedIntersection.second, selectedX, selectedY});
+          lines.push_back({selectedIntersection.x, selectedIntersection.y, selected.x, selected.y});
 
           // After creating a new line, deselect everything
           selectedIntersection = {-1, -1};
@@ -138,12 +141,11 @@ public:
         {
           if (!lines.empty())
           {
-            const int selectedX = FindClosestMult(GetMouseX());
-            const int selectedY = FindClosestMult(GetMouseY());
+            const olc::vi2d selected = {FindClosestMult(mouse.x), FindClosestMult(mouse.y)};
 
             for(std::vector<line>::iterator iterator = lines.begin(); iterator != lines.end(); iterator++)
             {
-              if (selectedX == iterator->x1 && selectedY == iterator->y1 || selectedX == iterator->x2 && selectedY == iterator->y2)
+              if (selected.x == iterator->x1 && selected.y == iterator->y1 || selected.x == iterator->x2 && selected.y == iterator->y2)
               {
                 lines.erase(iterator);
                 iterator--;
@@ -208,21 +210,10 @@ public:
     if (state == INTERSECTION_HAS_BEEN_SELECTED)
     {
       // Draws a line from the selected intersection to the highlighted one nearest to the mouse
-      DrawLine(
-        gridSize * FindClosestMult(GetMouseX()),
-        gridSize * FindClosestMult(GetMouseY()),
-        selectedIntersection.first * gridSize,
-        selectedIntersection.second * gridSize,
-        olc::CYAN
-      );
+      DrawLine({gridSize * FindClosestMult(mouse.x), gridSize * FindClosestMult(mouse.y)}, selectedIntersection * gridSize, olc::CYAN);
 
       // Highlights the selected intersection
-      FillCircle(
-        selectedIntersection.first * gridSize,
-        selectedIntersection.second * gridSize,
-        circleRadius * 0.66f,
-        olc::MAGENTA
-      );
+      FillCircle(selectedIntersection * gridSize, circleRadius * 0.66f, olc::MAGENTA);
     }
 
     // Draws the control area with text
@@ -275,13 +266,12 @@ public:
    */
   void HighlightNearestIntersection()
   {
-    if (GetMouseY() > controlAreaHeight)
+    if (mouse.y > controlAreaHeight)
     {
       // Finding the closest multiples
-      int x = FindClosestMult(GetMouseX());
-      int y = FindClosestMult(GetMouseY());
+      const olc::vi2d point = {FindClosestMult(mouse.x), FindClosestMult(mouse.y)};
 
-      DrawCircle(x * gridSize, y * gridSize, circleRadius, olc::Pixel(255, 155, 0));
+      DrawCircle(point.x * gridSize, point.y * gridSize, circleRadius, olc::Pixel(255, 155, 0));
     }
   }
 
@@ -329,13 +319,13 @@ public:
    */
   int FindClosestMult(const int& number)
   {
-    int multiplier = number / gridSize;
+    const int multiplier = number / gridSize;
 
     // The closest multiple smaller than number
-    int closestSmaller = multiplier * gridSize;
+    const int closestSmaller = multiplier * gridSize;
 
     // The closest multiple larger than number
-    int closestLarger = (multiplier + 1) * gridSize;
+    const int closestLarger = (multiplier + 1) * gridSize;
 
     // Returning the one which has a smaller absolute distance to the number
     return (abs(number - closestSmaller) < abs(number - closestLarger)) ? multiplier : multiplier + 1;
@@ -353,20 +343,16 @@ public:
     // Then calculate all the shadows
     for (std::vector<line>::iterator iterator = lines.begin(); iterator != lines.end(); iterator++)
     {
-      olc::vi2d mousePosition = {GetMouseX(), GetMouseY()};
-
-      olc::vi2d point1 = {iterator->x1 * gridSize, iterator->y1 * gridSize};
-      olc::vi2d point2 = {iterator->x2 * gridSize, iterator->y2 * gridSize};
+      const olc::vi2d point1 = {iterator->x1 * gridSize, iterator->y1 * gridSize};
+      const olc::vi2d point2 = {iterator->x2 * gridSize, iterator->y2 * gridSize};
 
       // HACK: Draw the lines to be just slightly bigger than the screen diagonal, that way the lines can be extended further and no additional math needs to be done
       // Determine the two points of intersection on the edges of the field
-      olc::vi2d firstEdgePoint = FindSuitablePoint(mousePosition, point1);
-      olc::vi2d secondEdgePoint = FindSuitablePoint(mousePosition, point2);
+      const olc::vi2d firstDistantPoint = FindSuitablePoint(point1);
+      const olc::vi2d secondDistantPoint = FindSuitablePoint(point2);
 
-      std::cout << '\n';
-
-      DrawLine(mousePosition, point1, olc::CYAN);
-      DrawLine(mousePosition, point2, olc::CYAN);
+      DrawLine(mouse, firstDistantPoint, olc::CYAN);
+      DrawLine(mouse, secondDistantPoint, olc::CYAN);
 
       // Divide the resulting polygon into triangles and 🎵 paint it black 🎶
     }
@@ -375,24 +361,20 @@ public:
   /**
    * @brief Finds a suitable point to use for completion of the polygon that represents the shadows
    *
-   * @param mouseX X pixel position of mouse
-   * @param mouseY Y pixel position of mouse
-   * @param x X pixel position of a point
-   * @param y Y pixel psition of a point
+   * @param olc::vi2d Coordinates of the point
    * @return olc::vi2d The point to be used for the polygon
    */
-  olc::vi2d FindSuitablePoint(const olc::vi2d& mouse, const olc::vi2d& point)
+  olc::vi2d FindSuitablePoint(const olc::vi2d& point)
   {
+    // Edgecase
+    if (mouse == point)
+    {
+      return point;
+    }
+
     // Calculating the directional vector using AB = B - A
-    olc::vi2d direction = point - mouse;
-
-    // FIXME: the maths is very off for the lines
     // Determine the coordinates of the distant point (using u = L / ||v|| * v)
-    olc::vi2d solution = (direction * (diagonalDistance / direction.mag())) - mouse;
-
-    std::cout << solution.mag() << ' ';
-
-    return solution;
+    return ((float)diagonalDistance / (float)(point - mouse).mag() * (point - mouse)) + mouse;
   }
 
   void TrianguliseAndPaintItBlack()
