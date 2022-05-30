@@ -47,13 +47,18 @@ private:
 
   STATE state = SELECT_AN_INTERSECTION;
 
-  // Pythagoras' theorem (which wasn't actually invented by Pythagoras himself)
-  const int diagonalDistance = sqrt(pow((820 - controlAreaHeight), 2) + pow(1280, 2));
+  int diagonalDistance;
+  int screenWidth;
+  int screenHeight;
 
 public:
   bool OnUserCreate() override
   {
     Clear(olc::BLACK);
+
+    diagonalDistance = sqrt(pow(ScreenHeight() - controlAreaHeight, 2) + pow(ScreenWidth(), 2));
+    screenWidth = ScreenWidth();
+    screenHeight = ScreenHeight();
 
     return true;
   }
@@ -65,9 +70,6 @@ public:
       mouse = {GetMouseX(), GetMouseY()};
 
       // TODO: integrate font extension of the PGE
-      // TODO: create some color-constants so that color changes can be applied more easily
-      // TODO: fix performance issues for -O0
-      // TODO: modes for creating lines and casting light/shadows
       // TODO: store lines using a hash function for efficient lookup times
       UserInput();
       UpdateState();
@@ -193,9 +195,6 @@ public:
       DrawGrid();
     }
 
-    // Draws all created lines
-    DrawLines();
-
     // Drawing a cricle around the intersection closest to the mouse position when in drawing mode
     if (state != CAST_LIGHT)
     {
@@ -205,6 +204,9 @@ public:
     {
       CastLight();
     }
+
+    // Draws all created lines
+    DrawLines();
 
     // If an intersection has been selected
     if (state == INTERSECTION_HAS_BEEN_SELECTED)
@@ -227,15 +229,15 @@ public:
   {
     // Grid field is 1280x720px with 100px at the top to display text
     // Drawing vertical lines
-    for (int x = gridSize; x < ScreenWidth(); x += gridSize)
+    for (int x = gridSize; x < screenWidth; x += gridSize)
     {
-      DrawLine(x, controlAreaHeight, x, ScreenHeight(), olc::Pixel(55, 55, 55));
+      DrawLine(x, controlAreaHeight, x, screenHeight, olc::Pixel(55, 55, 55));
     }
 
     // Drawing horizontal lines
-    for (int y = gridSize + controlAreaHeight; y < ScreenWidth(); y += gridSize)
+    for (int y = gridSize + controlAreaHeight; y < screenWidth; y += gridSize)
     {
-      DrawLine(0, y, ScreenWidth(), y, olc::Pixel(55, 55, 55));
+      DrawLine(0, y, screenWidth, y, olc::Pixel(55, 55, 55));
     }
   }
 
@@ -281,7 +283,7 @@ public:
   void DrawControlArea()
   {
     // Drawing the control area at the top of the screen
-    FillRect(0, 0, ScreenWidth(), controlAreaHeight, olc::Pixel(128, 0, 255));
+    FillRect(0, 0, screenWidth, controlAreaHeight, olc::Pixel(128, 0, 255));
 
     // Instructions based on state
     if (state == SELECT_AN_INTERSECTION)
@@ -338,7 +340,7 @@ public:
   {
     // IDEA: first cast light all over the world, then fill in the shadows behind the structures
     // Fill the area with light
-    // ! Don't delete me FillRect(0, controlAreaHeight, ScreenWidth(), ScreenHeight());
+    FillRect(0, controlAreaHeight, screenWidth, screenHeight);
 
     // Then calculate all the shadows
     for (std::vector<line>::iterator iterator = lines.begin(); iterator != lines.end(); iterator++)
@@ -346,15 +348,47 @@ public:
       const olc::vi2d point1 = {iterator->x1 * gridSize, iterator->y1 * gridSize};
       const olc::vi2d point2 = {iterator->x2 * gridSize, iterator->y2 * gridSize};
 
-      // HACK: Draw the lines to be just slightly bigger than the screen diagonal, that way the lines can be extended further and no additional math needs to be done
-      // Determine the two points of intersection on the edges of the field
-      const olc::vi2d firstDistantPoint = FindSuitablePoint(point1);
-      const olc::vi2d secondDistantPoint = FindSuitablePoint(point2);
+      // Determine two distant points to determine intersections on the borders
+      const olc::vi2d distantPoint1 = FindSuitablePoint(point1);
+      const olc::vi2d distantPoint2 = FindSuitablePoint(point2);
 
-      DrawLine(mouse, firstDistantPoint, olc::CYAN);
-      DrawLine(mouse, secondDistantPoint, olc::CYAN);
+      olc::vi2d intersection1 = FindIntersection(point1, distantPoint1);
+      olc::vi2d intersection2 = FindIntersection(point2, distantPoint2);
 
-      // Divide the resulting polygon into triangles and 🎵 paint it black 🎶
+      if (intersection1.y == 99)
+      {
+        intersection1.y = 100;
+      }
+      if (intersection2.y == 99)
+      {
+        intersection2.y = 100;
+      }
+
+      FillTriangle(point1, intersection1, intersection2, olc::BLACK);
+      FillTriangle(point2, point1, intersection2, olc::BLACK);
+
+      // HACK: applying shadows to the corners in a really inefficient way
+      // Top left corner
+      if (intersection1.x == 0 && intersection2.y == controlAreaHeight || intersection1.y == controlAreaHeight && intersection2.x == 0)
+      {
+        FillTriangle({0, controlAreaHeight}, intersection1, intersection2, olc::BLACK);
+      }
+      // top right corner
+      else if (intersection1.x == 0 && intersection2.y == screenWidth || intersection1.y == controlAreaHeight && intersection2.x == screenWidth)
+      {
+        FillTriangle({screenWidth, controlAreaHeight}, intersection1, intersection2, olc::BLACK);
+      }
+      // bottom left
+      else if (intersection1.x == 0 && intersection2.y == screenHeight || intersection1.y == 0 && intersection2.x == screenHeight)
+      {
+        FillTriangle({0, screenHeight}, intersection1, intersection2, olc::BLACK);
+      }
+      // bottom right
+      else if (intersection1.x == screenWidth && intersection2.y == screenHeight || intersection1.y == screenWidth && intersection2.x == screenHeight)
+      {
+        FillTriangle({screenWidth, screenHeight}, intersection1, intersection2, olc::BLACK);
+      }
+
     }
   }
 
@@ -377,9 +411,79 @@ public:
     return ((float)diagonalDistance / (float)(point - mouse).mag() * (point - mouse)) + mouse;
   }
 
-  void TrianguliseAndPaintItBlack()
+  /**
+   * @brief Finds the intersection with one of the four walls
+   *
+   * @param point
+   * @param distantPoint
+   * @return olc::vi2d Coordinates of the intersection
+   */
+  olc::vi2d FindIntersection(const olc::vi2d& point, const olc::vi2d& distantPoint)
   {
+    olc::vi2d badResult = {-1, -1};
+    olc::vi2d topLeft = {0, controlAreaHeight};
+    olc::vi2d bottomLeft = {0, screenHeight};
+    olc::vi2d bottomRight = {screenWidth, screenHeight};
+    olc::vi2d topRight = {screenWidth, controlAreaHeight};
 
+    // TODO: Determine which wall the line intersects with
+    // Intersection with the west wall
+    olc::vi2d intersection = CalculateIntersection(point, distantPoint, topLeft, bottomLeft);
+
+    if (intersection != badResult)
+    {
+      return intersection;
+    }
+
+    // Intersection with the north wall
+    intersection = CalculateIntersection(point, distantPoint, topLeft, topRight);
+
+    if (intersection != badResult)
+    {
+      return intersection;
+    }
+
+    // Intersection with the east wall
+    intersection = CalculateIntersection(point, distantPoint, topRight, bottomRight);
+
+    if (intersection != badResult)
+    {
+      return intersection;
+    }
+
+    // Intersection with the south wall
+    intersection = CalculateIntersection(point, distantPoint, bottomLeft, bottomRight);
+
+    return intersection;
+  }
+
+  /**
+   * @brief Calculates the intersection between two lines represented by two points each
+   *
+   * @param p0 Point 0
+   * @param p1 Point 1
+   * @param p2 Point 2
+   * @param p3 Point 3
+   * @return olc::vi2d The intersection
+   */
+  olc::vi2d CalculateIntersection(const olc::vf2d& p0, const olc::vf2d& p1, const olc::vf2d& p2, const olc::vf2d& p3)
+  {
+    const olc::vf2d s1 = p1 - p0;
+    const olc::vf2d s2 = p3 - p2;
+
+    const float s = (-s1.y * (p0.x - p2.x) + s1.x * (p0.y - p2.y)) / (-s2.x * s1.y + s1.x * s2.y);
+    const float t = (s2.x * (p0.y - p2.y) - s2.y * (p0.x - p2.x)) / (-s2.x * s1.y + s1.x * s2.y);
+
+    olc::vi2d intersection = {-1, -1};
+
+    if (s >= 0 && s <= 1 && t >= 0 && t <= 1)
+    {
+      // Collision detected
+      intersection.x = p0.x + (t * s1.x);
+      intersection.y = p0.y + (t * s1.y);
+    }
+
+    return intersection;
   }
 };
 
