@@ -355,40 +355,7 @@ public:
       olc::vi2d intersection1 = FindIntersection(point1, distantPoint1);
       olc::vi2d intersection2 = FindIntersection(point2, distantPoint2);
 
-      if (intersection1.y == 99)
-      {
-        intersection1.y = 100;
-      }
-      if (intersection2.y == 99)
-      {
-        intersection2.y = 100;
-      }
-
-      FillTriangle(point1, intersection1, intersection2, olc::BLACK);
-      FillTriangle(point2, point1, intersection2, olc::BLACK);
-
-      // HACK: applying shadows to the corners in a really inefficient way
-      // Top left corner
-      if (intersection1.x == 0 && intersection2.y == controlAreaHeight || intersection1.y == controlAreaHeight && intersection2.x == 0)
-      {
-        FillTriangle({0, controlAreaHeight}, intersection1, intersection2, olc::BLACK);
-      }
-      // top right corner
-      else if (intersection1.x == 0 && intersection2.y == screenWidth || intersection1.y == controlAreaHeight && intersection2.x == screenWidth)
-      {
-        FillTriangle({screenWidth, controlAreaHeight}, intersection1, intersection2, olc::BLACK);
-      }
-      // bottom left
-      else if (intersection1.x == 0 && intersection2.y == screenHeight || intersection1.y == 0 && intersection2.x == screenHeight)
-      {
-        FillTriangle({0, screenHeight}, intersection1, intersection2, olc::BLACK);
-      }
-      // bottom right
-      else if (intersection1.x == screenWidth && intersection2.y == screenHeight || intersection1.y == screenWidth && intersection2.x == screenHeight)
-      {
-        FillTriangle({screenWidth, screenHeight}, intersection1, intersection2, olc::BLACK);
-      }
-
+      // TODO: the shadow drawing method didn't work; we'll need to implement a light drawing method
     }
   }
 
@@ -426,6 +393,7 @@ public:
     olc::vi2d bottomRight = {screenWidth, screenHeight};
     olc::vi2d topRight = {screenWidth, controlAreaHeight};
 
+    // TODO: account for the occasional 99 retunr value
     // TODO: Determine which wall the line intersects with
     // Intersection with the west wall
     olc::vi2d intersection = CalculateIntersection(point, distantPoint, topLeft, bottomLeft);
