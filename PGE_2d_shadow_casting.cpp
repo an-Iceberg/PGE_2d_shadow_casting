@@ -56,7 +56,7 @@ public:
   {
     Clear(olc::BLACK);
 
-    diagonalDistance = sqrt(pow(ScreenHeight() - controlAreaHeight, 2) + pow(ScreenWidth(), 2));
+    diagonalDistance = sqrt(pow(ScreenHeight(), 2) + pow(ScreenWidth(), 2));
     screenWidth = ScreenWidth();
     screenHeight = ScreenHeight();
 
@@ -253,13 +253,13 @@ public:
         DrawLine(line.x1 * gridSize, line.y1 * gridSize, line.x2 * gridSize, line.y2 * gridSize);
       }
     }
-    else
-    {
-      for(const auto& line : lines)
-      {
-        DrawLine(line.x1 * gridSize, line.y1 * gridSize, line.x2 * gridSize, line.y2 * gridSize, olc::MAGENTA);
-      }
-    }
+    // else
+    // {
+    //   for(const auto& line : lines)
+    //   {
+    //     DrawLine(line.x1 * gridSize, line.y1 * gridSize, line.x2 * gridSize, line.y2 * gridSize, olc::MAGENTA);
+    //   }
+    // }
   }
 
   // TODO {optional}: implement deadzone
@@ -338,24 +338,28 @@ public:
    */
   void CastLight()
   {
-    // IDEA: first cast light all over the world, then fill in the shadows behind the structures
-    // Fill the area with light
-    FillRect(0, controlAreaHeight, screenWidth, screenHeight);
-
-    // Then calculate all the shadows
+    // TODO: implement javidx9's solution
+    // Calculates all triangles that should represent the light
     for (std::vector<line>::iterator iterator = lines.begin(); iterator != lines.end(); iterator++)
     {
+      const olc::vi2d invalid = {-1, -1};
+
       const olc::vi2d point1 = {iterator->x1 * gridSize, iterator->y1 * gridSize};
       const olc::vi2d point2 = {iterator->x2 * gridSize, iterator->y2 * gridSize};
 
-      // Determine two distant points to determine intersections on the borders
+      // Determine two points outside the viewport
       const olc::vi2d distantPoint1 = FindSuitablePoint(point1);
       const olc::vi2d distantPoint2 = FindSuitablePoint(point2);
 
-      olc::vi2d intersection1 = FindIntersection(point1, distantPoint1);
-      olc::vi2d intersection2 = FindIntersection(point2, distantPoint2);
+      int distance1;
+      int distance2;
 
-      // TODO: the shadow drawing method didn't work; we'll need to implement a light drawing method
+      olc::vi2d distance;
+
+      DrawLine(mouse, distantPoint1, olc::MAGENTA);
+      DrawLine(mouse, distantPoint2, olc::MAGENTA);
+
+      DrawLine(point1, point2, olc::CYAN);
     }
   }
 
@@ -449,6 +453,11 @@ public:
       // Collision detected
       intersection.x = p0.x + (t * s1.x);
       intersection.y = p0.y + (t * s1.y);
+    }
+
+    if (intersection == p0 || intersection == p1 || intersection == p2 || intersection == p3)
+    {
+      return {-1, -1};
     }
 
     return intersection;
