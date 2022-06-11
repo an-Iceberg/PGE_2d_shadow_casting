@@ -340,12 +340,12 @@ public:
   {
     // TODO: implement javidx9's solution
     // Calculates all triangles that should represent the light
-    for (std::vector<line>::iterator iterator = lines.begin(); iterator != lines.end(); iterator++)
+    for (std::vector<line>::iterator line = lines.begin(); line != lines.end(); line++)
     {
       const olc::vi2d invalid = {-1, -1};
 
-      const olc::vi2d point1 = {iterator->x1 * gridSize, iterator->y1 * gridSize};
-      const olc::vi2d point2 = {iterator->x2 * gridSize, iterator->y2 * gridSize};
+      const olc::vi2d point1 = {line->x1 * gridSize, line->y1 * gridSize};
+      const olc::vi2d point2 = {line->x2 * gridSize, line->y2 * gridSize};
 
       // Determine two points outside the viewport
       const olc::vi2d distantPoint1 = FindSuitablePoint(point1);
