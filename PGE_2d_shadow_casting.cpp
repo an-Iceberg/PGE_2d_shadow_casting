@@ -94,7 +94,6 @@ public:
         return;
       }
 
-      // TODO: refactor with program states in mind
       // Selects an intersection if the mouse is in a valid place
       if (mouse.y > controlAreaHeight && GetMouse(0).bPressed)
       {
@@ -290,26 +289,26 @@ public:
     {
       FillRect(0, 0, 419, 25, olc::DARK_MAGENTA);
       DrawString(5, 5, "Mode: [D]  C  (draw lines)", olc::CYAN, UIscaling);
-      DrawString(420, 5, "(change with RIGHT/LEFT)", olc::WHITE, UIscaling);
+      DrawStringProp(420, 5, "(change with RIGHT/LEFT)", olc::WHITE, UIscaling);
 
-      DrawString(5, 30, "M1 - select a point", olc::WHITE, UIscaling);
-      DrawString(5, 55, "M2 - delete all lines that end at the mouse cursor", olc::WHITE, UIscaling);
-      DrawString(5, 80, "BACKSPACE - clear all lines", olc::WHITE, UIscaling);
+      DrawStringProp(5, 30, "M1 - select a point", olc::WHITE, UIscaling);
+      DrawStringProp(5, 55, "M2 - delete all lines that end at the mouse cursor", olc::WHITE, UIscaling);
+      DrawStringProp(5, 80, "BACKSPACE - clear all lines", olc::WHITE, UIscaling);
     }
     else if (state == INTERSECTION_HAS_BEEN_SELECTED)
     {
       FillRect(0, 0, 419, 25, olc::DARK_MAGENTA);
       DrawString(5, 5, "Mode: [D]  C  (draw lines)", olc::CYAN, UIscaling);
-      DrawString(420, 5, "(change with RIGHT/LEFT)", olc::WHITE, UIscaling);
+      DrawStringProp(420, 5, "(change with RIGHT/LEFT)", olc::WHITE, UIscaling);
 
-      DrawString(5, 30, "M1 - place a line", olc::WHITE, UIscaling);
-      DrawString(5, 55, "M2 - cancel", olc::WHITE, UIscaling);
+      DrawStringProp(5, 30, "M1 - place a line", olc::WHITE, UIscaling);
+      DrawStringProp(5, 55, "M2 - cancel", olc::WHITE, UIscaling);
     }
     else if (state == CAST_LIGHT)
     {
       FillRect(0, 0, 419, 25, olc::DARK_MAGENTA);
       DrawString(5, 5, "Mode:  D  [C] (cast light)", olc::CYAN, UIscaling);
-      DrawString(420, 5, "(change with RIGHT/LEFT)", olc::WHITE, UIscaling);
+      DrawStringProp(420, 5, "(change with RIGHT/LEFT)", olc::WHITE, UIscaling);
     }
   }
 
@@ -338,28 +337,93 @@ public:
    */
   void CastLight()
   {
+    const olc::vi2d invalid = {-1, -1};
+
     // TODO: implement javidx9's solution
     // Calculates all triangles that should represent the light
-    for (std::vector<line>::iterator line = lines.begin(); line != lines.end(); line++)
+    for (const auto &line : lines)
     {
-      const olc::vi2d invalid = {-1, -1};
+      // Draws the lines the user has created
+      DrawLine(line.x1 * gridSize, line.y1 * gridSize, line.x2 * gridSize, line.y2 * gridSize, olc::MAGENTA);
 
-      const olc::vi2d point1 = {line->x1 * gridSize, line->y1 * gridSize};
-      const olc::vi2d point2 = {line->x2 * gridSize, line->y2 * gridSize};
+      // The two iterations are for the line start and line end
+      for (int i = 0; i < 2; i++)
+      {
+        olc::vf2d ray;
 
-      // Determine two points outside the viewport
-      const olc::vi2d distantPoint1 = FindSuitablePoint(point1);
-      const olc::vi2d distantPoint2 = FindSuitablePoint(point2);
+        switch (i)
+        {
+          // Line start
+          case 0:
+            ray.x = ((float)line.x1 * (float)gridSize) - (float)mouse.x;
+            ray.y = ((float)line.y1 * (float)gridSize) - (float)mouse.y;
+          break;
 
-      int distance1;
-      int distance2;
+          // Line end
+          case 1:
+            ray.x = ((float)line.x2 * (float)gridSize) - (float)mouse.x;
+            ray.y = ((float)line.y2 * (float)gridSize) - (float)mouse.y;
+          break;
 
-      olc::vi2d distance;
+          default:
+          break;
+        }
 
-      DrawLine(mouse, distantPoint1, olc::MAGENTA);
-      DrawLine(mouse, distantPoint2, olc::MAGENTA);
+        float baseAngle = atan2f(ray.x, ray.y);
 
-      DrawLine(point1, point2, olc::CYAN);
+        float angle = 0;
+
+        // For each point cast 3 rays
+        for (int j = 0; j < 3; j++)
+        {
+          switch (j)
+          {
+            case 0:
+              angle = baseAngle - 0.0001f;
+            break;
+
+            case 1:
+              angle = baseAngle;
+            break;
+
+            case 2:
+              angle = baseAngle + 0.0001f;
+            break;
+
+            default:
+            break;
+          }
+
+          // Create ray along angle for required distance
+          ray.x = (float)diagonalDistance * cosf(angle);
+          ray.y = (float)diagonalDistance * sinf(angle);
+
+          // Check for ray intersection with all edges
+          for (const auto &line2 : lines)
+          {
+            olc::vf2d start = {(float)line2.x1, (float)line2.y1};
+            olc::vf2d end = {(float)line2.x2, (float)line2.y2};
+
+            olc::vf2d intersection = CalculateIntersection(mouse, ray, start, end);
+          }
+        }
+      }
+      // const olc::vi2d point1 = {line.x1 * gridSize, line.y1 * gridSize};
+      // const olc::vi2d point2 = {line.x2 * gridSize, line.y2 * gridSize};
+
+      // // Determine two points outside the viewport
+      // const olc::vi2d distantPoint1 = FindSuitablePoint(point1);
+      // const olc::vi2d distantPoint2 = FindSuitablePoint(point2);
+
+      // int distance1;
+      // int distance2;
+
+      // olc::vi2d distance;
+
+      // DrawLine(mouse, distantPoint1, olc::MAGENTA);
+      // DrawLine(mouse, distantPoint2, olc::MAGENTA);
+
+      // DrawLine(point1, point2, olc::CYAN);
     }
   }
 
@@ -438,7 +502,7 @@ public:
    * @param p3 Point 3
    * @return olc::vi2d The intersection
    */
-  olc::vi2d CalculateIntersection(const olc::vf2d& p0, const olc::vf2d& p1, const olc::vf2d& p2, const olc::vf2d& p3)
+  olc::vf2d CalculateIntersection(const olc::vf2d& p0, const olc::vf2d& p1, const olc::vf2d& p2, const olc::vf2d& p3)
   {
     const olc::vf2d s1 = p1 - p0;
     const olc::vf2d s2 = p3 - p2;
@@ -446,7 +510,7 @@ public:
     const float s = (-s1.y * (p0.x - p2.x) + s1.x * (p0.y - p2.y)) / (-s2.x * s1.y + s1.x * s2.y);
     const float t = (s2.x * (p0.y - p2.y) - s2.y * (p0.x - p2.x)) / (-s2.x * s1.y + s1.x * s2.y);
 
-    olc::vi2d intersection = {-1, -1};
+    olc::vf2d intersection = {-1.0f, -1.0f};
 
     if (s >= 0 && s <= 1 && t >= 0 && t <= 1)
     {
@@ -457,7 +521,7 @@ public:
 
     if (intersection == p0 || intersection == p1 || intersection == p2 || intersection == p3)
     {
-      return {-1, -1};
+      return {-1.0f, -1.0f};
     }
 
     return intersection;
