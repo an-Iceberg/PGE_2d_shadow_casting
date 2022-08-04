@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 
+// TODO: determine what this project should become
 struct line
 {
   int x1;
